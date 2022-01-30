@@ -30,12 +30,11 @@ contract ContractA {
      }
 
     function deposit(IERC20 token, uint amount) public {
-        //TODO: test
-        require(address(b) != address(0x0), "B is not set");
+        require(address(b) != address(0), "Contract B is not set");
         require(amount > 0, "You need to deposit at least some tokens");
         require(token.allowance(msg.sender, address(this)) >= amount, "allowance too low");
         _safeTransferFrom(token, msg.sender, address(this), amount);
-        b.record(msg.sender, address(token), amount);
+        b.addRecord(msg.sender, address(token), amount);
     }
 
     function _safeTransferFrom(
@@ -43,26 +42,25 @@ contract ContractA {
         address sender,
         address receipent,
         uint amount
-    ) private {
+    ) internal {
         bool sent = token.transferFrom(sender, receipent, amount);
         require(sent, "Token transfer failed");
     }
 
     function changeAdmin(address newAdmin) external onlyAdmin {
-        //TODO: this needed?
-        require(newAdmin != address(0x0), "New admin must not be empty");
+        require(newAdmin != address(0), "zero address");
         admin = newAdmin;
     }
 
     function setB(ContractB newB) external onlyAdmin {
-        require(address(newB) != address(0x0), "New B must not be empty");
+        require(address(newB) != address(0), "zero address");
         b = newB;
     }
 }
 
 contract ContractB {
-    address public admin;
-    ContractA public a;
+    address public admin; // address of admin (deployer)
+    ContractA public a; // mutable address of Contract A
 
     struct Record {
         address user;
@@ -76,30 +74,17 @@ contract ContractB {
         admin = msg.sender;
     }
 
-    function getRecord(uint _index) public view returns(Record memory) {
-        return records[_index];
-    }
-
-    function countRecord() public view returns(uint) {
-        return records.length;
-    }
-
+    function recordsLength() external view returns (uint) {
+        return records.length;                             
+    }                                                       
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "Only admin");
         _;
     }
 
-    // only ContractA use record() and admin use manualDeposit()
-    function record(
-        address _user,
-        address _token,
-        uint _amount
-    ) public {
-        // contract B should only be writable by 1 admin user (the deployer) and contract A
-        require(msg.sender == address(a), "invalid writer");
+    function _addRecord(address _user, address _token, uint _amount) internal {
         require(_amount > 0, "You need to deposit at least some tokens");
-
         records.push(Record({
             user: _user,
             token: _token,
@@ -107,14 +92,34 @@ contract ContractB {
         }));
     }
 
+    // AND also include another function that allows an admin user 
+    // (the deployer of this contract) to manually add in new deposits
+    function adminAddRecord(
+        address _user,
+        address _token,
+        uint _amount
+    ) external onlyAdmin {
+        _addRecord(_user, _token, _amount);
+    }
+
+    // add record from contract A
+    function addRecord(
+        address _user,
+        address _token,
+        uint _amount
+    ) public {
+        // contract B should only be writable by 1 admin user (the deployer) and contract A
+        require(msg.sender == address(a), "invalid writer");
+        _addRecord(_user, _token, _amount);
+    }
+
     function changeAdmin(address newAdmin) external onlyAdmin {
-        //TODO: this needed?
-        require(newAdmin != address(0x0), "New admin must not be empty");
+        require(newAdmin != address(0), "zero address");
         admin = newAdmin;
     }
 
     function setA(ContractA newA) external onlyAdmin {
-        require(address(newA) != address(0x0), "New A must not be empty");
+        require(address(newA) != address(0), "zero address");
         a = newA;
     }
 }
