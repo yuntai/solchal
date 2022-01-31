@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -16,50 +17,42 @@ contract Token is ERC20 {
     }
 }
 
-contract ContractA {
-    address public admin;
+contract Ownable {
+    address public owner;
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner");
+        _;
+    }
+
+    function changeOwner(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "zero address");
+        owner = newOwner;
+    }
+}
+
+contract ContractA is Ownable {
+    using SafeERC20 for IERC20;
+
     ContractB public b;
 
     constructor() {
-        admin = msg.sender;
+        owner = msg.sender;
     }
-
-     modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin");
-        _;
-     }
 
     function deposit(IERC20 token, uint amount) public {
         require(address(b) != address(0), "Contract B is not set");
         require(amount > 0, "You need to deposit at least some tokens");
-        require(token.allowance(msg.sender, address(this)) >= amount, "allowance too low");
-        _safeTransferFrom(token, msg.sender, address(this), amount);
+        token.safeTransferFrom(msg.sender, address(this), amount);
         b.addRecord(msg.sender, address(token), amount);
     }
 
-    function _safeTransferFrom(
-        IERC20 token,
-        address sender,
-        address receipent,
-        uint amount
-    ) internal {
-        bool sent = token.transferFrom(sender, receipent, amount);
-        require(sent, "Token transfer failed");
-    }
-
-    function changeAdmin(address newAdmin) external onlyAdmin {
-        require(newAdmin != address(0), "zero address");
-        admin = newAdmin;
-    }
-
-    function setB(ContractB newB) external onlyAdmin {
+    function setB(ContractB newB) external onlyOwner {
         require(address(newB) != address(0), "zero address");
         b = newB;
     }
 }
 
-contract ContractB {
-    address public admin; // address of admin (deployer)
+contract ContractB is Ownable {
     ContractA public a; // mutable address of Contract A
 
     struct Record {
@@ -71,17 +64,12 @@ contract ContractB {
     Record[] public records;
 
     constructor() {
-        admin = msg.sender;
+        owner = msg.sender;
     }
 
     function recordsLength() external view returns (uint) {
         return records.length;                             
     }                                                       
-
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin");
-        _;
-    }
 
     function _addRecord(address _user, address _token, uint _amount) internal {
         require(_amount > 0, "You need to deposit at least some tokens");
@@ -94,11 +82,11 @@ contract ContractB {
 
     // AND also include another function that allows an admin user 
     // (the deployer of this contract) to manually add in new deposits
-    function adminAddRecord(
+    function ownerAddRecord(
         address _user,
         address _token,
         uint _amount
-    ) external onlyAdmin {
+    ) external onlyOwner {
         _addRecord(_user, _token, _amount);
     }
 
@@ -108,17 +96,12 @@ contract ContractB {
         address _token,
         uint _amount
     ) public {
-        // contract B should only be writable by 1 admin user (the deployer) and contract A
+        //contract B should only be writable by 1 admin user (the deployer) and contract A
         require(msg.sender == address(a), "invalid writer");
         _addRecord(_user, _token, _amount);
     }
 
-    function changeAdmin(address newAdmin) external onlyAdmin {
-        require(newAdmin != address(0), "zero address");
-        admin = newAdmin;
-    }
-
-    function setA(ContractA newA) external onlyAdmin {
+    function setA(ContractA newA) external onlyOwner {
         require(address(newA) != address(0), "zero address");
         a = newA;
     }
